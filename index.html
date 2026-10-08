@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Project Kanban Board</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a quiet header strip, then five equal lanes side by side; lanes stack to one column on a phone. */
+:root {
+  --ground: #e9eef0;
+  --lane: #dde5e8;
+  --card: #fbfdfd;
+  --ink: #16242b;
+  --muted: #5a6c75;
+  --line: #c3cfd4;
+  --accent: #1f5fbf;
+  --accent-ink: #ffffff;
+  --high: #c2362b;
+  --med: #b0730a;
+  --low: #5a6c75;
+  --done: #2c7a4b;
+  --warn-bg: #fbe9c9;
+  --warn-ink: #6b4500;
+  --shadow: 0 1px 2px rgba(22, 36, 43, .12);
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #10181c; --lane: #18242a; --card: #22323a; --ink: #e6eef1; --muted: #93a7b0;
+    --line: #34474f; --accent: #7fb2f5; --accent-ink: #0c1a2b; --high: #f0857b; --med: #e6b25a;
+    --low: #93a7b0; --done: #6fc793; --warn-bg: #4a3610; --warn-ink: #f6dca6;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #10181c; --lane: #18242a; --card: #22323a; --ink: #e6eef1; --muted: #93a7b0;
+  --line: #34474f; --accent: #7fb2f5; --accent-ink: #0c1a2b; --high: #f0857b; --med: #e6b25a;
+  --low: #93a7b0; --done: #6fc793; --warn-bg: #4a3610; --warn-ink: #f6dca6;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4); color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45; padding-inline: 20px; padding-block: 24px 48px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap { max-width: 1600px; margin-inline: auto; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
+.content { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.side { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 20px; position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); min-width: 0; }
+.side-group { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.side .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.side .btn { width: 100%; text-align: left; }
+.side .tabs { flex-direction: column; }
+.side .tabs button { text-align: left; background: transparent; }
+.side .tabs button + button { border-top: 1px solid var(--line); }
+.menu-btn, .side-close, .side-backdrop { display: none; }
+@media (max-width: 860px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); }
+  /* On a phone the menu waits off the left edge and slides over the board. */
+  .side { position: fixed; top: 0; bottom: 0; left: 0; z-index: 20; width: min(280px, 84vw); border-radius: 0 10px 10px 0; border-left: 0;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto; transform: translateX(-105%); visibility: hidden; transition: transform .22s ease, visibility 0s .22s; box-shadow: 4px 0 24px rgba(10, 18, 22, .3); }
+  .side.open { transform: translateX(0); visibility: visible; transition: transform .22s ease; }
+  .side-backdrop { display: block; position: fixed; inset: 0; z-index: 19; background: rgba(10, 18, 22, .5); border: 0; padding: 0; opacity: 0; pointer-events: none; transition: opacity .22s ease; }
+  .side-backdrop.open { opacity: 1; pointer-events: auto; }
+  .menu-btn { display: inline-flex; align-items: center; gap: 8px; }
+  .menu-btn i { width: 16px; height: 2px; background: currentColor; box-shadow: 0 -5px 0 currentColor, 0 5px 0 currentColor; }
+  .side-close { display: block; align-self: flex-end; width: auto !important; }
+}
+@media (prefers-reduced-motion: reduce) { .side, .side.open, .side-backdrop { transition: none; } }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(1.6rem, 4vw, 2.2rem); line-height: 1.05; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+.summary { font-family: var(--mono); font-size: .8rem; color: var(--muted); margin: 6px 0 0; font-variant-numeric: tabular-nums; }
+.summary b { color: var(--ink); font-weight: 500; }
+.summary .late { color: var(--high); }
+
+.btn { border: 1px solid var(--line); background: var(--card); border-radius: 6px; padding: 8px 14px; cursor: pointer; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.danger { color: var(--high); }
+.btn.quiet { background: transparent; }
+
+.head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.tabs { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.tabs button { border: 0; background: var(--card); padding: 8px 14px; cursor: pointer; font-weight: 500; }
+.tabs button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+
+.report { display: flex; flex-direction: column; gap: 26px; }
+.report h2 { font-family: var(--display); font-weight: 500; font-size: 1.15rem; margin: 0 0 8px; }
+.report .hint { color: var(--muted); font-size: .88rem; margin: 0 0 8px; max-width: 65ch; }
+.figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 0; }
+.figures div { background: var(--card); padding: 12px 14px; }
+.figures dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.figures dd { margin: 4px 0 0; font-family: var(--display); font-weight: 700; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.figures dd.late { color: var(--high); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td.wrap-cell { white-space: normal; min-width: 180px; }
+tbody tr:last-child td { border-bottom: 0; }
+th { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 500; }
+th.num, td.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.late { color: var(--high); font-weight: 500; }
+td.good { color: var(--done); }
+tr.total td { font-weight: 600; background: var(--lane); }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.toolbar .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-right: 4px; }
+.chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: .85rem; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+
+.notice { background: var(--warn-bg); color: var(--warn-ink); border-radius: 6px; padding: 8px 12px; font-size: .88rem; }
+
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-items: start; }
+.lane { background: var(--lane); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.lane.over { outline: 2px dashed var(--accent); outline-offset: -2px; }
+.lane-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 4px; }
+.lane-head h2 { font-family: var(--display); font-weight: 500; font-size: 1rem; margin: 0; }
+.count { font-family: var(--mono); font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.count.overlimit { background: var(--warn-bg); color: var(--warn-ink); border-radius: 4px; padding: 1px 6px; }
+.lane-effort { display: flex; justify-content: space-between; gap: 8px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; font-family: var(--mono); font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lane-effort b { color: var(--ink); font-weight: 500; }
+.cards { display: flex; flex-direction: column; gap: 8px; min-height: 36px; }
+.empty { color: var(--muted); font-size: .85rem; padding: 6px 4px; margin: 0; }
+.add { border: 1px dashed var(--line); background: transparent; color: var(--muted); border-radius: 6px; padding: 7px; cursor: pointer; text-align: left; font-size: .88rem; }
+.add:hover { color: var(--ink); border-color: var(--muted); }
+
+.card { background: var(--card); border: 1px solid transparent; border-left: 4px solid var(--low); border-radius: 6px; box-shadow: var(--shadow); padding: 9px 10px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; }
+.card:hover { border-color: var(--line); border-left-color: inherit; }
+.card.p-high { border-left-color: var(--high); }
+.card.p-med { border-left-color: var(--med); }
+.card.p-low { border-left-color: var(--low); }
+.card.dragging { opacity: .4; }
+.card.drop-before { box-shadow: 0 -3px 0 var(--accent), var(--shadow); }
+.lane[data-col="done"] .card-title { color: var(--muted); text-decoration: line-through; }
+.card-title { font-weight: 500; overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-family: var(--mono); font-size: .72rem; color: var(--muted); }
+.meta .late { color: var(--high); font-weight: 500; }
+.meta .prio-high { color: var(--high); }
+.meta .prio-med { color: var(--med); }
+.meta .timer { color: var(--accent); font-weight: 500; }
+.meta .timer.late { color: var(--high); }
+.who { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--muted); }
+.who i { font-style: normal; font-family: var(--mono); font-size: .68rem; font-weight: 500; background: var(--ink); color: var(--ground); border-radius: 999px; min-width: 22px; height: 22px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; }
+.people { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.people li { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 6px 6px 12px; overflow-wrap: anywhere; }
+.people .btn { padding: 4px 10px; font-size: .85rem; white-space: nowrap; }
+.tag-example { border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+
+dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); padding: 20px; width: min(480px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(10, 18, 22, .55); }
+dialog h3 { font-family: var(--display); font-size: 1.25rem; margin: 0 0 14px; }
+form { display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field span { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.field input, .field select, .field textarea { border: 1px solid var(--line); background: var(--ground); border-radius: 6px; padding: 8px 10px; width: 100%; }
+.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+.actions .spacer { flex: 1; }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--ground); padding: 9px 16px; border-radius: 6px; font-size: .9rem; max-width: calc(100vw - 32px); }
+
+</style>
+
+<div class="wrap">
+  <button class="side-backdrop" id="sideBackdrop" type="button" aria-label="Close menu" tabindex="-1"></button>
+  <aside class="side" id="side" aria-label="Board menu">
+    <button class="btn quiet side-close" id="sideClose" type="button">Close</button>
+    <div class="side-group">
+      <span class="label">View</span>
+      <nav class="tabs" aria-label="View">
+        <button type="button" id="tabBoard" aria-pressed="true">Board</button>
+        <button type="button" id="tabReport" aria-pressed="false">Report</button>
+      </nav>
+    </div>
+    <div class="side-group">
+      <span class="label">Actions</span>
+      <button class="btn primary" id="newCard" type="button">New card</button>
+      <button class="btn" id="managePeople" type="button">Manage people</button>
+      <button class="btn danger" id="clearExamples" type="button" hidden>Remove examples</button>
+    </div>
+    <div class="side-group">
+      <span class="label">Project</span>
+      <span id="chips" class="toolbar"></span>
+    </div>
+    <div class="side-group">
+      <span class="label">Person</span>
+      <span id="personChips" class="toolbar"></span>
+    </div>
+  </aside>
+
+  <div class="content">
+    <header>
+      <div>
+        <h1>Project Kanban Board</h1>
+        <p class="summary" id="summary">Opening your board…</p>
+      </div>
+      <button class="btn menu-btn" id="menuBtn" type="button" aria-expanded="false" aria-controls="side"><i></i>Menu</button>
+    </header>
+    <div class="notice" id="notice" hidden></div>
+    <main class="board" id="board"></main>
+    <section class="report" id="report" hidden></section>
+  </div>
+</div>
+
+<dialog id="editor">
+  <form id="cardForm">
+    <h3 id="editorTitle">New card</h3>
+    <label class="field"><span>Task</span><input id="fTitle" required maxlength="140" autocomplete="off"></label>
+    <div class="row">
+      <label class="field"><span>Project</span><input id="fProject" list="projectList" maxlength="40" autocomplete="off"></label>
+      <label class="field"><span>Stage</span><select id="fColumn"></select></label>
+      <label class="field"><span>Assigned to</span><select id="fAssignee"></select></label>
+    </div>
+    <div class="row">
+      <label class="field"><span>Priority</span>
+        <select id="fPriority"><option value="low">Low</option><option value="med">Medium</option><option value="high">High</option></select>
+      </label>
+      <label class="field"><span>Due date</span><input id="fDue" type="date"></label>
+      <label class="field"><span>Allotted hours</span><input id="fEffort" type="number" min="0" max="999" step="0.25" inputmode="decimal" placeholder="e.g. 1.5"></label>
+    </div>
+    <label class="field"><span>Notes</span><textarea id="fNotes" rows="3" maxlength="2000"></textarea></label>
+    <p class="summary" id="timeInfo" hidden></p>
+    <datalist id="projectList"></datalist>
+    <div class="actions">
+      <button class="btn danger" id="deleteBtn" type="button">Delete</button>
+      <span class="spacer"></span>
+      <button class="btn" id="cancelBtn" type="button">Cancel</button>
+      <button class="btn primary" id="saveBtn" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="peopleDlg">
+  <h3>People</h3>
+  <p class="summary" id="peopleEmpty">No one added yet. Add the people who can be assigned cards.</p>
+  <ul class="people" id="peopleList"></ul>
+  <form id="personForm">
+    <label class="field"><span>Add a person</span><input id="pName" maxlength="60" autocomplete="off" placeholder="Name" required></label>
+    <div class="actions">
+      <button class="btn" id="peopleClose" type="button">Close</button>
+      <button class="btn primary" id="personAdd" type="submit">Add person</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+const COLUMNS = [
+  { id: "backlog", name: "Backlog" },
+  { id: "todo", name: "To do" },
+  { id: "doing", name: "In progress", wip: 3 },
+  { id: "review", name: "Review" },
+  { id: "done", name: "Done" },
+];
+const PRIORITY_LABEL = { low: "Low", med: "Medium", high: "High" };
+
+const $ = (id) => document.getElementById(id);
+let cards = [];          // [{id, title, project, column, priority, due, notes, order, example}]
+let coll = null;         // db collection, or null when working in memory
+let loaded = false;
+let readOnly = false;
+let people = [];         // [{id, name, example}]
+let peopleColl = null;
+let filter = "";         // project name, "" = all
+let personFilter = "";   // person id, "none" = unassigned, "" = everyone
+let editingId = null;
+let dragId = null;
+
+function el(tag, props, ...kids) {
+  const node = document.createElement(tag);
+  Object.assign(node, props || {});
+  for (const k of kids) if (k != null) node.append(k);
+  return node;
+}
+
+function today() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function formatDue(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return isNaN(d) ? iso : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function formatEffort(hours) {
+  if (!hours) return "";
+  if (hours < 1) return Math.round(hours * 60) + "m";
+  return (Math.round(hours * 100) / 100) + "h";
+}
+
+function totalEffort(list) { return list.reduce((sum, c) => sum + (Number(c.effort) || 0), 0); }
+
+/* Time tracking: the clock starts when a card enters In progress and pauses when it leaves. */
+function elapsedMs(c) {
+  const running = c.column === "doing" && c.startedAt ? Date.now() - Date.parse(c.startedAt) : 0;
+  return (Number(c.progressMs) || 0) + Math.max(0, running || 0);
+}
+
+function formatDuration(ms) {
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "under 1m";
+  const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+  if (d) return d + "d " + h + "h";
+  if (h) return h + "h " + m + "m";
+  return m + "m";
+}
+
+function formatStamp(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function overEffort(c) { return c.effort && elapsedMs(c) > Number(c.effort) * 3600000; }
+
+/* Timestamp fields to write when a card goes from one stage to another. */
+function stageChange(c, toCol) {
+  const from = c ? c.column : null;
+  const now = new Date().toISOString();
+  const patch = {};
+  if (from === toCol) return patch;
+  if (toCol === "doing") patch.startedAt = now;
+  if (from === "doing") {
+    patch.progressMs = elapsedMs(c);
+    patch.startedAt = "";
+  }
+  if (toCol === "done") patch.completedAt = now;
+  else if (from === "done") patch.completedAt = "";
+  return patch;
+}
+
+// A card is overdue when the hours spent in progress pass its allotted hours.
+function isLate(c) { return Boolean(overEffort(c)); }
+function overBy(c) { return elapsedMs(c) - (Number(c.effort) || 0) * 3600000; }
+
+function inColumn(colId) {
+  return cards.filter((c) => c.column === colId).sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
+let toastTimer;
+function toast(msg) {
+  $("toast").textContent = msg;
+  $("toast").hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $("toast").hidden = true; }, 3200);
+}
+
+/* ---------- saving ---------- */
+
+// Outside claude.ai (for example on GitHub Pages) the board keeps its data in this browser.
+const LOCAL_KEY = "project-kanban-board.v1";
+let localOk = false;
+
+function loadLocal() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}");
+    cards = Array.isArray(saved.cards) ? saved.cards : [];
+    people = Array.isArray(saved.people) ? saved.people : [];
+    localStorage.setItem(LOCAL_KEY, JSON.stringify({ cards, people }));
+    localOk = true;
+  } catch (e) { localOk = false; }
+}
+
+function persistLocal() {
+  if (!localOk) return;
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ cards, people })); } catch (e) { toast("Couldn't save in this browser."); }
+}
+
+function writeFailed(e) {
+  if (e && e.code === "invalid_argument") {
+    readOnly = true;
+    render();
+    toast("You can view this board, but you can't change it.");
+  } else if (e && e.code === "quota_exceeded") {
+    toast("The board is full. Delete some cards to add more.");
+  } else {
+    toast("That change wasn't saved. Try again in a moment.");
+  }
+}
+
+async function saveCard(id, data) {
+  if (coll) {
+    try { await coll.doc(id).set(data); } catch (e) { writeFailed(e); return false; }
+  } else {
+    cards = cards.filter((c) => c.id !== id).concat({ id, ...data });
+    persistLocal();
+    render();
+  }
+  return true;
+}
+
+async function patchCard(id, patch) {
+  if (coll) {
+    try { await coll.doc(id).update(patch); } catch (e) { writeFailed(e); return false; }
+  } else {
+    cards = cards.map((c) => (c.id === id ? { ...c, ...patch } : c));
+    persistLocal();
+    render();
+  }
+  return true;
+}
+
+async function removeCard(id) {
+  if (coll) {
+    try { await coll.doc(id).delete(); } catch (e) { writeFailed(e); return false; }
+  } else {
+    cards = cards.filter((c) => c.id !== id);
+    persistLocal();
+    render();
+  }
+  return true;
+}
+
+/* ---------- people ---------- */
+
+function personOf(c) { return people.find((p) => p.id === c.assignee) || null; }
+
+function initials(name) {
+  return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase() || "?";
+}
+
+// Cards that pass the project and person filters.
+function visible(list) {
+  return list.filter((c) => {
+    if (filter && c.project !== filter) return false;
+    if (personFilter === "none") return !personOf(c);
+    if (personFilter) return c.assignee === personFilter;
+    return true;
+  });
+}
+
+async function addPerson(name) {
+  const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  if (peopleColl) {
+    try { await peopleColl.doc(id).set({ name, createdAt: new Date().toISOString() }); } catch (e) { writeFailed(e); return false; }
+  } else {
+    people = people.concat({ id, name });
+    persistLocal();
+    render();
+  }
+  return true;
+}
+
+async function removePerson(id) {
+  if (peopleColl) {
+    try { await peopleColl.doc(id).delete(); } catch (e) { writeFailed(e); return false; }
+  } else {
+    people = people.filter((p) => p.id !== id);
+    persistLocal();
+    render();
+  }
+  return true;
+}
+
+function renderPeople() {
+  people.sort((a, b) => a.name.localeCompare(b.name));
+  if (personFilter && personFilter !== "none" && !people.some((p) => p.id === personFilter)) personFilter = "";
+
+  const chips = $("personChips");
+  const make = (label, value) => {
+    const b = el("button", { type: "button", className: "chip" }, label);
+    b.setAttribute("aria-pressed", String(personFilter === value));
+    b.addEventListener("click", () => { personFilter = value; render(); });
+    return b;
+  };
+  chips.replaceChildren(make("Everyone", ""), ...people.map((p) => make(p.name, p.id)), make("Unassigned", "none"));
+  $("managePeople").hidden = readOnly;
+
+  $("peopleEmpty").hidden = people.length > 0;
+  $("peopleList").replaceChildren(...people.map((p) => {
+    const count = cards.filter((c) => c.assignee === p.id).length;
+    const remove = el("button", { type: "button", className: "btn danger" }, "Remove");
+    remove.addEventListener("click", async () => {
+      if (!remove.dataset.armed) { remove.dataset.armed = "1"; remove.textContent = "Click again to remove"; return; }
+      if (await removePerson(p.id)) toast(p.name + " removed. Their cards are now unassigned.");
+    });
+    return el("li", {}, el("span", {}, p.name + (p.example ? " (example)" : "") + " · " + count + (count === 1 ? " card" : " cards")), remove);
+  }));
+}
+
+$("managePeople").addEventListener("click", () => { $("peopleDlg").showModal(); $("pName").focus(); });
+$("peopleClose").addEventListener("click", () => $("peopleDlg").close());
+$("personForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("pName").value.trim();
+  if (!name) return;
+  if (people.some((p) => p.name.toLowerCase() === name.toLowerCase())) { toast(name + " is already on the list."); return; }
+  $("pName").value = "";
+  await addPerson(name);
+  $("pName").focus();
+});
+
+/* ---------- rendering ---------- */
+
+function renderCard(c) {
+  const meta = el("div", { className: "meta" });
+  if (c.project) meta.append(el("span", {}, c.project));
+  if (c.priority && c.priority !== "low") meta.append(el("span", { className: "prio-" + c.priority }, PRIORITY_LABEL[c.priority]));
+  const spent = elapsedMs(c);
+  const running = c.column === "doing" && c.startedAt;
+  const allotted = formatEffort(Number(c.effort));
+  if (running || spent > 0) {
+    meta.append(el("span", { className: running ? "timer" : "", title: running ? "Started " + formatStamp(c.startedAt) : "Hours spent in In progress" },
+      "Spent " + formatDuration(spent) + (allotted ? " of " + allotted : "")));
+  } else if (allotted) {
+    meta.append(el("span", { title: "Allotted hours" }, "Allotted " + allotted));
+  }
+  if (isLate(c)) meta.append(el("span", { className: "late" }, "Overdue by " + formatDuration(overBy(c))));
+  if (c.due) meta.append(el("span", {}, "Due " + formatDue(c.due)));
+  if (c.example) meta.append(el("span", { className: "tag-example" }, "Example"));
+
+  const person = personOf(c);
+  const who = person ? el("span", { className: "who" }, el("i", {}, initials(person.name)), person.name) : null;
+
+  const node = el("button", { type: "button", className: "card p-" + (c.priority || "low"), draggable: !readOnly },
+    el("span", { className: "card-title" }, c.title || "Untitled"),
+    who,
+    meta.childNodes.length ? meta : null);
+  node.dataset.id = c.id;
+  node.addEventListener("click", () => openEditor(c.id));
+  node.addEventListener("dragstart", (e) => {
+    dragId = c.id;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", c.id);
+    requestAnimationFrame(() => node.classList.add("dragging"));
+  });
+  node.addEventListener("dragend", () => { dragId = null; clearDropMarks(); node.classList.remove("dragging"); });
+  return node;
+}
+
+function clearDropMarks() {
+  document.querySelectorAll(".lane.over").forEach((n) => n.classList.remove("over"));
+  document.querySelectorAll(".card.drop-before").forEach((n) => n.classList.remove("drop-before"));
+}
+
+function renderLane(col) {
+  const all = inColumn(col.id);
+  const shown = visible(all);
+
+  const count = el("span", { className: "count" }, col.wip ? all.length + " / " + col.wip : String(all.length));
+  const effortLine = el("div", { className: "lane-effort" },
+    el("span", {}, "Total effort"), el("b", {}, formatEffort(totalEffort(shown)) || "0h"));
+  if (col.wip && all.length > col.wip) {
+    count.classList.add("overlimit");
+    count.title = "Over the work-in-progress limit of " + col.wip;
+  }
+
+  const list = el("div", { className: "cards" });
+  shown.forEach((c) => list.append(renderCard(c)));
+  if (!shown.length) list.append(el("p", { className: "empty" }, loaded ? "No cards" : "…"));
+
+  const lane = el("section", { className: "lane" },
+    el("div", { className: "lane-head" }, el("h2", {}, col.name), count),
+    effortLine,
+    list);
+  lane.dataset.col = col.id;
+
+  if (!readOnly) {
+    const add = el("button", { type: "button", className: "add" }, "+ Add a card");
+    add.addEventListener("click", () => openEditor(null, col.id));
+    lane.append(add);
+
+    lane.addEventListener("dragover", (e) => {
+      if (!dragId) return;
+      e.preventDefault();
+      clearDropMarks();
+      lane.classList.add("over");
+      const target = e.target.closest && e.target.closest(".card");
+      if (target && target.dataset.id !== dragId) target.classList.add("drop-before");
+    });
+    lane.addEventListener("dragleave", (e) => { if (!lane.contains(e.relatedTarget)) clearDropMarks(); });
+    lane.addEventListener("drop", (e) => {
+      if (!dragId) return;
+      e.preventDefault();
+      const target = e.target.closest && e.target.closest(".card");
+      const beforeId = target && target.dataset.id !== dragId ? target.dataset.id : null;
+      const id = dragId;
+      clearDropMarks();
+      moveCard(id, col.id, beforeId);
+    });
+  }
+  return lane;
+}
+
+function orderFor(colId, beforeId, movingId) {
+  const list = inColumn(colId).filter((c) => c.id !== movingId);
+  const idx = beforeId ? list.findIndex((c) => c.id === beforeId) : -1;
+  if (idx < 0) return list.length ? (list[list.length - 1].order || 0) + 1000 : 1000;
+  const hi = list[idx].order || 0;
+  const lo = idx > 0 ? (list[idx - 1].order || 0) : hi - 1000;
+  return (lo + hi) / 2;
+}
+
+function moveCard(id, colId, beforeId) {
+  const c = cards.find((x) => x.id === id);
+  if (!c) return;
+  patchCard(id, { column: colId, order: orderFor(colId, beforeId, id), ...stageChange(c, colId) });
+}
+
+function renderChips() {
+  const projects = [...new Set(cards.map((c) => c.project).filter(Boolean))].sort();
+  if (filter && !projects.includes(filter)) filter = "";
+  const chips = $("chips");
+  chips.replaceChildren();
+  const make = (label, value) => {
+    const b = el("button", { type: "button", className: "chip" }, label);
+    b.setAttribute("aria-pressed", String(filter === value));
+    b.addEventListener("click", () => { filter = value; render(); });
+    return b;
+  };
+  chips.append(make("All", ""));
+  projects.forEach((p) => chips.append(make(p, p)));
+
+  $("projectList").replaceChildren(...projects.map((p) => el("option", { value: p })));
+  const hasExamples = cards.some((c) => c.example) || people.some((p) => p.example);
+  $("clearExamples").hidden = readOnly || !hasExamples;
+}
+
+function renderSummary() {
+  const s = $("summary");
+  if (!loaded) { s.textContent = "Opening your board…"; return; }
+  if (!cards.length) { s.textContent = "No cards yet. Add your first task with “New card”."; return; }
+  const open = cards.filter((c) => c.column !== "done").length;
+  const done = cards.length - open;
+  const late = cards.filter(isLate).length;
+  s.replaceChildren(el("b", {}, String(open)), " open · ", el("b", {}, String(done)), " done");
+  const left = totalEffort(cards.filter((c) => c.column !== "done"));
+  if (left) s.append(" · ", el("b", {}, formatEffort(left)), " of work left");
+  if (late) s.append(" · ", el("span", { className: "late" }, late + " overdue"));
+}
+
+/* ---------- report ---------- */
+
+function table(headers, rows) {
+  // headers: [{label, num}], rows: [{cells: [text | {text, cls}], total}]
+  const thead = el("thead", {}, el("tr", {}, ...headers.map((h) => el("th", { className: h.num ? "num" : "" }, h.label))));
+  const tbody = el("tbody", {}, ...rows.map((r) => {
+    const tr = el("tr", { className: r.total ? "total" : "" });
+    r.cells.forEach((cell, i) => {
+      const c = typeof cell === "object" && cell !== null ? cell : { text: cell };
+      tr.append(el("td", { className: [headers[i].num ? "num" : "", c.cls || ""].join(" ").trim() }, String(c.text)));
+    });
+    return tr;
+  }));
+  return el("div", { className: "table-wrap" }, el("table", {}, thead, tbody));
+}
+
+function block(title, hint, body) {
+  return el("div", {}, el("h2", {}, title), hint ? el("p", { className: "hint" }, hint) : null, body);
+}
+
+const hrs = (list) => formatEffort(totalEffort(list)) || "0h";
+const logged = (list) => { const ms = list.reduce((s, c) => s + elapsedMs(c), 0); return ms ? formatDuration(ms) : "0m"; };
+const pct = (part, whole) => (whole ? Math.round((part / whole) * 100) + "%" : "0%");
+const colName = (id) => (COLUMNS.find((c) => c.id === id) || { name: id }).name;
+
+function renderReport() {
+  const list = visible(cards);
+  const root = $("report");
+  if (!loaded) { root.replaceChildren(el("p", { className: "hint" }, "Opening your board…")); return; }
+  if (!list.length) { root.replaceChildren(el("p", { className: "hint" }, "No cards to report on yet. Add cards on the Board tab.")); return; }
+
+  const done = list.filter((c) => c.column === "done");
+  const late = list.filter(isLate);
+  const figure = (label, value, cls) => el("div", {}, el("dt", {}, label), el("dd", { className: cls || "" }, value));
+  const figures = el("dl", { className: "figures" },
+    figure("Cards", String(list.length)),
+    figure("Completed", done.length + " (" + pct(done.length, list.length) + ")"),
+    figure("Estimated effort", hrs(list)),
+    figure("Time logged", logged(list)),
+    figure("Overdue", String(late.length), late.length ? "late" : ""));
+
+  const statusRows = COLUMNS.map((col) => {
+    const cs = list.filter((c) => c.column === col.id);
+    return { cells: [col.name, cs.length, hrs(cs), logged(cs)] };
+  });
+  statusRows.push({ total: true, cells: ["Total", list.length, hrs(list), logged(list)] });
+  const byStatus = table(
+    [{ label: "Status" }, { label: "Cards", num: true }, { label: "Estimated effort", num: true }, { label: "Time logged", num: true }],
+    statusRows);
+
+  const projects = [...new Set(list.map((c) => c.project || ""))].sort();
+  const byProject = table(
+    [{ label: "Project" }, { label: "Cards", num: true }, { label: "Done", num: true }, { label: "Complete", num: true },
+     { label: "Estimated effort", num: true }, { label: "Effort left", num: true }, { label: "Time logged", num: true }],
+    projects.map((p) => {
+      const cs = list.filter((c) => (c.project || "") === p);
+      const d = cs.filter((c) => c.column === "done");
+      return { cells: [p || "No project", cs.length, d.length, pct(d.length, cs.length), hrs(cs), hrs(cs.filter((c) => c.column !== "done")), logged(cs)] };
+    }));
+
+  const groups = people.map((p) => ({ name: p.name, cs: list.filter((c) => c.assignee === p.id) }))
+    .concat({ name: "Unassigned", cs: list.filter((c) => !personOf(c)) })
+    .filter((g) => g.cs.length);
+  const byPerson = table(
+    [{ label: "Person" }, { label: "Cards", num: true }, { label: "In progress", num: true }, { label: "Done", num: true },
+     { label: "Allotted", num: true }, { label: "Spent", num: true }, { label: "Overdue", num: true }],
+    groups.map((g) => {
+      const over = g.cs.filter(isLate).length;
+      return { cells: [g.name, g.cs.length, g.cs.filter((c) => c.column === "doing").length, g.cs.filter((c) => c.column === "done").length,
+        hrs(g.cs), logged(g.cs), { text: over, cls: over ? "late" : "" }] };
+    }));
+
+  const timed = list.filter((c) => elapsedMs(c) > 0 || (c.column === "doing" && c.startedAt))
+    .sort((a, b) => elapsedMs(b) - elapsedMs(a));
+  const timeRows = timed.map((c) => {
+    const actual = elapsedMs(c);
+    const est = (Number(c.effort) || 0) * 3600000;
+    let diff = { text: "No estimate" };
+    if (est) {
+      const gap = actual - est;
+      diff = gap > 0 ? { text: "+" + formatDuration(gap) + " over", cls: "late" } : { text: formatDuration(-gap) + " under", cls: "good" };
+    }
+    return { cells: [{ text: c.title || "Untitled", cls: "wrap-cell" }, colName(c.column), c.startedAt ? formatStamp(c.startedAt) : "Paused",
+      formatEffort(Number(c.effort)) || "None", formatDuration(actual), diff] };
+  });
+  const byTime = timeRows.length
+    ? table([{ label: "Card" }, { label: "Status" }, { label: "Started" }, { label: "Estimate", num: true }, { label: "Time in progress", num: true }, { label: "Difference", num: true }], timeRows)
+    : el("p", { className: "hint" }, "No card has been timed yet. The clock starts when a card moves to In progress.");
+
+  const lateBody = late.length
+    ? table([{ label: "Card" }, { label: "Project" }, { label: "Status" }, { label: "Allotted", num: true }, { label: "Spent", num: true }, { label: "Over by", num: true }],
+        late.sort((a, b) => overBy(b) - overBy(a)).map((c) => ({
+          cells: [{ text: c.title || "Untitled", cls: "wrap-cell" }, c.project || "No project", colName(c.column),
+            formatEffort(Number(c.effort)), formatDuration(elapsedMs(c)), { text: formatDuration(overBy(c)), cls: "late" }] })))
+    : el("p", { className: "hint" }, "No card has gone past its allotted hours.");
+
+  root.replaceChildren(
+    figures,
+    block("By status", "Estimated effort and time logged for the cards now in each stage.", byStatus),
+    block("By project", null, byProject),
+    block("By person", null, byPerson),
+    block("Estimate against actual time", "Time in progress counts every hour a card has sat in In progress, including nights and weekends.", byTime),
+    block("Overdue cards", "A card is overdue when the hours spent in progress pass its allotted hours.", lateBody));
+}
+
+let view = location.hash === "#report" ? "report" : "board";
+
+function render() {
+  renderSummary();
+  renderChips();
+  renderPeople();
+  $("newCard").hidden = readOnly;
+  $("tabBoard").setAttribute("aria-pressed", String(view === "board"));
+  $("tabReport").setAttribute("aria-pressed", String(view === "report"));
+  $("board").hidden = view !== "board";
+  $("report").hidden = view !== "report";
+  if (view === "board") $("board").replaceChildren(...COLUMNS.map(renderLane));
+  else renderReport();
+}
+
+function setView(v) {
+  view = v;
+  try { history.replaceState(null, "", v === "report" ? "#report" : "#board"); } catch (e) {}
+  render();
+}
+$("tabBoard").addEventListener("click", () => setView("board"));
+$("tabReport").addEventListener("click", () => setView("report"));
+
+/* ---------- editor ---------- */
+
+function openEditor(id, colId) {
+  const c = id ? cards.find((x) => x.id === id) : null;
+  if (id && !c) return;
+  editingId = id;
+  $("editorTitle").textContent = c ? (readOnly ? "Card" : "Edit card") : "New card";
+  $("fTitle").value = c ? c.title || "" : "";
+  $("fProject").value = c ? c.project || "" : filter;
+  $("fColumn").value = c ? c.column : colId || "todo";
+  $("fAssignee").replaceChildren(el("option", { value: "" }, "Unassigned"), ...people.map((p) => el("option", { value: p.id }, p.name)));
+  $("fAssignee").value = c && personOf(c) ? c.assignee : (!c && personFilter && personFilter !== "none" ? personFilter : "");
+  $("fPriority").value = c ? c.priority || "low" : "low";
+  $("fDue").value = c ? c.due || "" : "";
+  $("fEffort").value = c && c.effort ? c.effort : "";
+  $("fNotes").value = c ? c.notes || "" : "";
+  const info = [];
+  if (c && c.createdAt) info.push("Created " + formatStamp(c.createdAt));
+  if (c && c.column === "doing" && c.startedAt) info.push("Started " + formatStamp(c.startedAt));
+  if (c && elapsedMs(c) > 0) info.push("Time in progress " + formatDuration(elapsedMs(c)));
+  if (c && c.completedAt) info.push("Finished " + formatStamp(c.completedAt));
+  $("timeInfo").textContent = info.join(" · ");
+  $("timeInfo").hidden = !info.length;
+  $("deleteBtn").hidden = !c || readOnly;
+  $("deleteBtn").textContent = "Delete";
+  $("deleteBtn").dataset.armed = "";
+  $("saveBtn").hidden = readOnly;
+  $("cancelBtn").textContent = readOnly ? "Close" : "Cancel";
+  for (const f of ["fTitle", "fProject", "fColumn", "fAssignee", "fPriority", "fDue", "fEffort", "fNotes"]) $(f).disabled = readOnly;
+  $("editor").showModal();
+  if (!readOnly) $("fTitle").focus();
+}
+
+$("fColumn").append(...COLUMNS.map((c) => el("option", { value: c.id }, c.name)));
+$("newCard").addEventListener("click", () => openEditor(null, "todo"));
+$("cancelBtn").addEventListener("click", () => $("editor").close());
+
+$("cardForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (readOnly) return;
+  const title = $("fTitle").value.trim();
+  if (!title) return;
+  const fields = {
+    title,
+    project: $("fProject").value.trim(),
+    column: $("fColumn").value,
+    assignee: $("fAssignee").value,
+    priority: $("fPriority").value,
+    due: $("fDue").value,
+    effort: Math.max(0, Number($("fEffort").value) || 0),
+    notes: $("fNotes").value.trim(),
+  };
+  const existing = editingId ? cards.find((c) => c.id === editingId) : null;
+  $("editor").close();
+  if (existing) {
+    if (existing.column !== fields.column) fields.order = orderFor(fields.column, null, existing.id);
+    await patchCard(existing.id, { ...fields, ...stageChange(existing, fields.column) });
+  } else {
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    await saveCard(id, { ...fields, ...stageChange(null, fields.column), order: orderFor(fields.column, null, id), createdAt: new Date().toISOString() });
+  }
+});
+
+$("deleteBtn").addEventListener("click", async () => {
+  const btn = $("deleteBtn");
+  if (!btn.dataset.armed) { btn.dataset.armed = "1"; btn.textContent = "Click again to delete"; return; }
+  const id = editingId;
+  $("editor").close();
+  if (id && await removeCard(id)) toast("Card deleted");
+});
+
+$("clearExamples").addEventListener("click", async () => {
+  const btn = $("clearExamples");
+  if (!btn.dataset.armed) {
+    btn.dataset.armed = "1"; btn.textContent = "Click again to remove them";
+    setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "Remove examples"; }, 4000);
+    return;
+  }
+  btn.dataset.armed = ""; btn.textContent = "Remove examples";
+  for (const c of cards.filter((x) => x.example)) { if (!(await removeCard(c.id))) return; }
+  for (const p of people.filter((x) => x.example)) { if (!(await removePerson(p.id))) return; }
+  toast("Example cards and people removed");
+});
+
+/* ---------- side menu (phone) ---------- */
+
+function setMenu(open) {
+  $("side").classList.toggle("open", open);
+  $("sideBackdrop").classList.toggle("open", open);
+  $("menuBtn").setAttribute("aria-expanded", String(open));
+}
+$("menuBtn").addEventListener("click", () => setMenu(true));
+$("sideClose").addEventListener("click", () => setMenu(false));
+$("sideBackdrop").addEventListener("click", () => setMenu(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
+// Picking a view or an action closes the menu; filters keep it open so several can be set.
+for (const id of ["tabBoard", "tabReport", "newCard", "managePeople"]) $(id).addEventListener("click", () => setMenu(false));
+
+// Swipe right from the left edge pulls the menu out; swipe left pushes it back.
+let swipe = null;
+document.addEventListener("touchstart", (e) => {
+  const t = e.touches[0];
+  const open = $("side").classList.contains("open");
+  swipe = open || t.clientX < 28 ? { x: t.clientX, y: t.clientY, open } : null;
+}, { passive: true });
+document.addEventListener("touchend", (e) => {
+  if (!swipe) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipe.x, dy = Math.abs(t.clientY - swipe.y);
+  if (Math.abs(dx) > 50 && dy < 60) setMenu(dx > 0);
+  swipe = null;
+}, { passive: true });
+
+/* ---------- start ---------- */
+
+function showNotice(msg) { $("notice").textContent = msg; $("notice").hidden = false; }
+
+async function start() {
+  render();
+  const claude = window.claude;
+  const db = claude && claude.use ? await claude.use("db") : null;
+  if (!db) {
+    loadLocal();
+    loaded = true;
+    showNotice(localOk
+      ? "This board is saved in this browser only. Other people and other devices won't see your cards."
+      : "This browser is blocking storage, so cards you add here will be gone when you close the page.");
+    render();
+    return;
+  }
+  coll = db.collection("cards");
+  coll.onSnapshot((snap) => {
+    cards = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    loaded = true;
+    render();
+  }, () => {
+    loaded = true;
+    readOnly = true;
+    showNotice("The board lost its connection. Reload the page to keep working.");
+    render();
+  });
+  peopleColl = db.collection("people");
+  peopleColl.onSnapshot((snap) => {
+    people = snap.docs.map((d) => ({ id: d.id, name: String(d.data().name || "Unnamed"), example: Boolean(d.data().example) }));
+    render();
+  }, () => {});
+  const user = await claude.use("user");
+  if (user && (await user.can("data.write")) === false) {
+    readOnly = true;
+    showNotice("You're viewing this board. Ask the owner for Contributor access to move or add cards.");
+    render();
+  }
+}
+start();
+// Keep the running timers on screen current. This only redraws; nothing is saved.
+setInterval(() => { if (!dragId && cards.some((c) => c.column === "doing" && c.startedAt)) render(); }, 30000);
+</script>
